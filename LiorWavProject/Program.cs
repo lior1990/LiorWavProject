@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.IO;
 using System.Text;
-using NAudio.Wave;
 using Newtonsoft.Json;
 
 namespace LiorWavProject
@@ -12,45 +11,70 @@ namespace LiorWavProject
     {
         public static void Main(string[] args)
         {
-            Console.WriteLine("Enter a path of a .wav file song");
-            string filePath = Console.ReadLine();
+            Console.WriteLine("Enter a path of the algorithm output");
+            //string filePath = Console.ReadLine();
+            string filePath = @"c:\users\lior\desktop\input.txt";
 
             if (File.Exists(filePath))
             {
-                if (filePath.EndsWith(".wav"))
+                if (filePath.EndsWith(".txt"))
                 {
-                    // get the list of countries to iterate
-                    var countries = GetCountryList();
+                    // get the list of countries with the continents from the resource file
+                    var countriesInfo = GetCountryList();
 
-                    WaveFileReader wavInput = null;
+                    string[] lines = null;
                     try
                     {
                         // open the input file
-                        wavInput = new WaveFileReader(filePath);
+                        lines = File.ReadAllLines(filePath);
                     }
                     catch
                     {
                         Console.WriteLine("Error: unable to open the file {0}", filePath);
                     }
 
-                    if(wavInput != null)
+                    if(lines != null)
                     {
-                        // if we are able to read from the wav file
-                        if (wavInput.CanRead)
+                        // create a list which holds the output countries
+                        List<Country> countriesOutput = new List<Country>();
+                        foreach (var line in lines.Where(l=> !(l.Equals(string.Empty))))
                         {
-                            // calculate hits by secret algorithm for each country
-                            countries.ForEach(country => CalculateCountryHits(country, wavInput));
-                            PrintResults(countries);
+                            // check if the line is valid from the algorithm output
+                            if (line.Contains("@Country: ") && line.Contains("Hits: "))
+                            {
+                                // extract country name and hits from the line
+                                string countryName = GetCountryName(line);
+                                uint countryHits = GetCountryHits(line);
+                                try
+                                {
+                                    // find the country's continent
+                                    var country = countriesInfo.First(c => c.Name.Equals(countryName, StringComparison.InvariantCultureIgnoreCase));
+                                    // update the number of hits
+                                    country.Hits = countryHits;
+                                    // add the country to the output
+                                    countriesOutput.Add(country);
+                                }
+                                catch
+                                {
+                                    // in case the continent wasn't found in the resource file
+                                    countriesOutput.Add(new Country(countryName, countryHits, "Unkown"));
+                                }
+                            }
+                        }
+                        if (countriesOutput.Count > 0)
+                        {
+                            // creates the json output file
+                            PrintResults(countriesOutput);
                         }
                         else
                         {
-                            Console.WriteLine("Error: unable to read from the file {0}", filePath);
+                            Console.WriteLine("Input file is empty or in a bad format");
                         }
                     }
                 }
                 else
                 {
-                    Console.WriteLine("Error: song has to be a .wav file");
+                    Console.WriteLine("Error: the input has to be a .txt file");
                 }
             }
             else
@@ -84,6 +108,7 @@ namespace LiorWavProject
                 {
                     JsonSerializer serializer = new JsonSerializer();
                     serializer.Serialize(file, output);
+                    Console.WriteLine("{0} has been successfully created", outputSource);
                 }
             }
             catch
@@ -91,8 +116,6 @@ namespace LiorWavProject
                 Console.WriteLine("Error: unable to create the output file '{0}'", outputSource);
             }
 
-            // print results to console 
-            countries.ForEach(c => Console.WriteLine(c));
         }
 
         /// <summary>
@@ -118,43 +141,41 @@ namespace LiorWavProject
         }
 
         /// <summary>
-        /// Calculates the number of hits per country for the wavFile input song
+        /// Extracts <CountryName> from a line "@Country: <CountryName> Predicted Hits: <Hits>"
         /// </summary>
-        /// <param name="country">Country</param>
-        /// <param name="wavFile">Song</param>
-        private static void CalculateCountryHits(Country country, WaveFileReader wavFile)
+        /// <param name="line">line in the above format</param>
+        /// <returns>Country name</returns>
+        private static string GetCountryName(string line)
         {
-            Console.Write("Working on {0}...",country.Name);
+            int prefix = ("@Country: ").Length;
+            int length = line.IndexOf(" Predicted") - prefix;
+            return length > 0 ? line.Substring(prefix, length) : "Wrong Input Format";
+        }
+
+        /// <summary>
+        /// Extracts <Hits> from a line "@Country: <CountryName> Predicted Hits: <Hits>"
+        /// </summary>
+        /// <param name="line">line in the above format</param>
+        /// <returns>number of hits</returns>
+        private static uint GetCountryHits(string line)
+        {
+            uint numOfHits = 0;
+            int prefix = line.IndexOf("Hits: ") + ("Hits: ").Length;
+            string hits = line.Substring(prefix);
+
             try
             {
-                // revert back to position 0 of the wav file
-                wavFile.Position = 0;
-                // initialize the buffer size to read
-                int bufferSize = wavFile.WaveFormat.AverageBytesPerSecond != 0 ? wavFile.WaveFormat.AverageBytesPerSecond : 1024;
-                byte[] buffer = new byte[bufferSize];
-                // get the country preference
-                byte[] countryPreferenceBytes = Encoding.ASCII.GetBytes(country.Name);
-                // go over the song and calculate the number of hits
-                while (wavFile.Position < wavFile.Length)
-                {
-                    wavFile.Read(buffer, 0, bufferSize);
-                    for (int i = 0; i < bufferSize; i++)
-                    {
-                        // if the country "likes" the song increase the hits
-                        if (buffer[i] == countryPreferenceBytes[i % countryPreferenceBytes.Length])
-                        {
-                            country.Hits++;
-                        }
-                    }
-                }
-                Console.WriteLine(" Done!");
+                numOfHits = uint.Parse(hits, System.Globalization.NumberStyles.AllowThousands,
+                             System.Globalization.CultureInfo.InvariantCulture);
             }
             catch
             {
-                country.Hits = 0;
-                Console.WriteLine(" Failed!");  
-            }            
+                numOfHits = 0;
+            }
+
+            return numOfHits;
         }
+
 
         /// <summary>
         /// Returns a list of country objects with their continent
