@@ -12,8 +12,7 @@ namespace LiorWavProject
         public static void Main(string[] args)
         {
             Console.WriteLine("Enter a path of the algorithm output");
-            //string filePath = Console.ReadLine();
-            string filePath = @"c:\users\lior\desktop\input.txt";
+            string filePath = Console.ReadLine();
 
             if (File.Exists(filePath))
             {
